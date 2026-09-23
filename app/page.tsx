@@ -1,9 +1,12 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import { loginUser } from "./api/auth";
 
 export default function Home() {
+  const router = useRouter();
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -22,11 +25,13 @@ export default function Home() {
 
     setLoading(true);
 
-    try {
-      const data = await loginUser(username, password);
+ try {
+  const data = await loginUser(username, password);
 
-      console.log("Login successful:", data);
-    } catch (error) {
+  localStorage.setItem("accessToken", data.accessToken);
+
+  router.push("/dashboard");
+} catch (error) {
       console.error(error);
       setError("Invalid username or password.");
     } finally {
