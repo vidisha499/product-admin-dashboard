@@ -43,3 +43,24 @@ export const addProduct = async (product: {
 
   return response.data;
 };
+
+export const updateProduct = async (
+  id: number,
+  product: {
+    title: string;
+    price: number;
+    category: string;
+    stock: number;
+  }
+) => {
+  const response = await api.put(`/products/${id}`, product);
+
+  return response.data;
+};
+
+export const deleteProduct = async (id: number) => {
+  const response = await api.delete(`/products/${id}`);
+
+  return response.data;
+};
+
