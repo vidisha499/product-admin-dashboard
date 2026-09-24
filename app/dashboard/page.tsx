@@ -1,6 +1,7 @@
 "use client";
 
 import {
+    Suspense,
     useEffect,
     useState,
     useRef,
@@ -181,7 +182,7 @@ const getInitialSort = (value: string | null) => {
     };
 };
 
-export default function Dashboard() {
+function DashboardContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
@@ -2603,5 +2604,13 @@ export default function Dashboard() {
                 </footer>
             </section>
         </main>
+    );
+}
+
+export default function Dashboard() {
+    return (
+        <Suspense fallback={null}>
+            <DashboardContent />
+        </Suspense>
     );
 }
