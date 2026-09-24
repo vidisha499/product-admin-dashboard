@@ -101,10 +101,13 @@ const saveDeletedProductIds = (ids: number[]) => {
 // =================================================
 
 const getInitialPage = (value: string | null) => {
+    if (!value) {
+        return 1;
+    }
+
     const parsedPage = Number(value);
 
     if (
-        value &&
         Number.isInteger(parsedPage) &&
         parsedPage >= 1
     ) {
@@ -115,6 +118,10 @@ const getInitialPage = (value: string | null) => {
 };
 
 const getInitialLimit = (value: string | null) => {
+    if (!value) {
+        return 10;
+    }
+
     const parsedLimit = Number(value);
 
     if (
@@ -136,7 +143,16 @@ const getInitialSort = (value: string | null) => {
         };
     }
 
-    const [field, order] = value.split("-");
+    const parts = value.split("-");
+
+    if (parts.length !== 2) {
+        return {
+            sortBy: "default",
+            sortOrder: "asc",
+        };
+    }
+
+    const [field, order] = parts;
 
     const validFields = [
         "price",
@@ -144,7 +160,10 @@ const getInitialSort = (value: string | null) => {
         "title",
     ];
 
-    const validOrders = ["asc", "desc"];
+    const validOrders = [
+        "asc",
+        "desc",
+    ];
 
     if (
         validFields.includes(field) &&
@@ -370,72 +389,7 @@ export default function Dashboard() {
         };
     }, [searchInput]);
 
-    // =================================================
-    // URL STATE
-    // =================================================
-
-    useEffect(() => {
-        const params = new URLSearchParams();
-
-        // Page
-        if (page !== 1) {
-            params.set("page", String(page));
-        }
-
-        // Page size
-        if (limit !== 10) {
-            params.set("limit", String(limit));
-        }
-
-        // Search
-        if (search.trim() !== "") {
-            params.set("search", search.trim());
-        }
-
-        // Category
-        if (selectedCategory) {
-            params.set(
-                "category",
-                selectedCategory
-            );
-        }
-
-        // Sort
-        if (sortBy !== "default") {
-            params.set(
-                "sort",
-                `${sortBy}-${sortOrder}`
-            );
-        }
-
-        const queryString = params.toString();
-
-        const newUrl = queryString
-            ? `/dashboard?${queryString}`
-            : "/dashboard";
-
-        const currentQuery =
-            searchParams.toString();
-
-        const currentUrl = currentQuery
-            ? `/dashboard?${currentQuery}`
-            : "/dashboard";
-
-        if (currentUrl !== newUrl) {
-            router.replace(newUrl, {
-                scroll: false,
-            });
-        }
-    }, [
-        page,
-        limit,
-        search,
-        selectedCategory,
-        sortBy,
-        sortOrder,
-        router,
-        searchParams,
-    ]);
+   
 
     // =================================================
     // SORT PRODUCTS
