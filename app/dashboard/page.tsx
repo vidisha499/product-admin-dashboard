@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getProducts, searchProducts } from "../api/products";
+import { getCategories } from "../api/categories";
 
 type Product = {
   id: number;
@@ -18,9 +19,75 @@ export default function Dashboard() {
   const router = useRouter();
 
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+
   const [loading, setLoading] = useState(true);
+  const [categoryLoading, setCategoryLoading] = useState(true);
+
   const [error, setError] = useState("");
+  const [categoryError, setCategoryError] = useState("");
+
   const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
+
+  // =================================================
+  // PAGINATION
+  // =================================================
+
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+
+  const skip = (page - 1) * limit;
+
+  // =================================================
+  // LOAD CATEGORIES
+  // =================================================
+
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
+    const fetchCategories = async () => {
+      try {
+        setCategoryLoading(true);
+        setCategoryError("");
+
+        const data = await getCategories();
+
+        /*
+          DummyJSON can return categories as objects
+          in some API versions and strings in others.
+        */
+
+        if (Array.isArray(data)) {
+          const categoryNames = data.map((category) => {
+            if (typeof category === "string") {
+              return category;
+            }
+
+            return category.slug || category.name || "";
+          });
+
+          setCategories(categoryNames.filter(Boolean));
+        }
+      } catch (error) {
+        console.error(error);
+        setCategoryError("Unable to load categories.");
+      } finally {
+        setCategoryLoading(false);
+      }
+    };
+
+    fetchCategories();
+  }, [router]);
+
+  // =================================================
+  // LOAD PRODUCTS
+  // =================================================
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -37,28 +104,98 @@ export default function Dashboard() {
 
         let data;
 
-        if (search.trim() === "") {
-          data = await getProducts(10, 0);
-        } else {
-          data = await searchProducts(search.trim(), 10, 0);
+        // =================================================
+        // CATEGORY + SEARCH
+        // =================================================
+
+        if (selectedCategory && search.trim() !== "") {
+          data = await searchProducts(search.trim(), 100, 0);
+
+          const filteredProducts = data.products.filter(
+            (product: Product) =>
+              product.category.toLowerCase() ===
+              selectedCategory.toLowerCase()
+          );
+
+          setProducts(filteredProducts.slice(skip, skip + limit));
         }
 
-        setProducts(data.products);
+        // =================================================
+        // ONLY CATEGORY
+        // =================================================
+
+        else if (selectedCategory) {
+          const allProducts = await getProducts(100, 0);
+
+          const filteredProducts = allProducts.products.filter(
+            (product: Product) =>
+              product.category.toLowerCase() ===
+              selectedCategory.toLowerCase()
+          );
+
+          setProducts(filteredProducts.slice(skip, skip + limit));
+        }
+
+        // =================================================
+        // ONLY SEARCH
+        // =================================================
+
+        else if (search.trim() !== "") {
+          data = await searchProducts(
+            search.trim(),
+            limit,
+            skip
+          );
+
+          setProducts(data.products);
+        }
+
+        // =================================================
+        // NO SEARCH + NO CATEGORY
+        // =================================================
+
+        else {
+          data = await getProducts(limit, skip);
+
+          setProducts(data.products);
+        }
       } catch (error) {
         console.error(error);
         setError("Unable to load products.");
+        setProducts([]);
       } finally {
         setLoading(false);
       }
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [router, search]);
+  }, [
+    router,
+    search,
+    selectedCategory,
+    page,
+    limit,
+    skip,
+  ]);
+
+  // =================================================
+  // LOGOUT
+  // =================================================
 
   const handleLogout = () => {
     localStorage.removeItem("accessToken");
     router.push("/");
   };
+  const handleLimitChange = (
+  event: React.ChangeEvent<HTMLSelectElement>
+) => {
+  setLimit(Number(event.target.value));
+  setPage(1);
+};
+
+  // =================================================
+  // STATS
+  // =================================================
 
   const totalStock = products.reduce(
     (total, product) => total + product.stock,
@@ -68,10 +205,16 @@ export default function Dashboard() {
   const averageRating =
     products.length > 0
       ? (
-          products.reduce((total, product) => total + product.rating, 0) /
-          products.length
+          products.reduce(
+            (total, product) => total + product.rating,
+            0
+          ) / products.length
         ).toFixed(1)
       : "0.0";
+
+  // =================================================
+  // CATEGORY STYLE
+  // =================================================
 
   const getCategoryStyle = (category: string) => {
     const value = category.toLowerCase();
@@ -98,6 +241,10 @@ export default function Dashboard() {
 
     return "bg-indigo-50 text-indigo-600 border-indigo-100";
   };
+
+  // =================================================
+  // STOCK STYLE
+  // =================================================
 
   const getStockStyle = (stock: number) => {
     if (stock > 50) {
@@ -128,27 +275,22 @@ export default function Dashboard() {
 
   return (
     <main className="min-h-screen bg-[#f5f7ff] text-slate-900">
-
       {/* ================================================= */}
       {/* NAVBAR */}
       {/* ================================================= */}
 
       <header className="sticky top-0 z-50 border-b border-white/60 bg-white/80 backdrop-blur-xl">
-
         <div className="mx-auto flex h-20 max-w-[1500px] items-center justify-between px-5 sm:px-8">
 
           {/* BRAND */}
 
           <div className="flex items-center gap-3">
-
             <div className="relative">
-
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 text-lg font-black text-white shadow-lg shadow-indigo-200">
                 P
               </div>
 
               <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-emerald-400" />
-
             </div>
 
             <div>
@@ -160,28 +302,23 @@ export default function Dashboard() {
                 Smart product management
               </p>
             </div>
-
           </div>
 
           {/* RIGHT */}
 
           <div className="flex items-center gap-3">
-
             <div className="hidden items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-2 sm:flex">
-
               <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
 
               <span className="text-xs font-semibold text-emerald-700">
                 Live
               </span>
-
             </div>
 
             <button
               onClick={handleLogout}
               className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
             >
-
               <svg
                 className="h-4 w-4"
                 fill="none"
@@ -189,7 +326,6 @@ export default function Dashboard() {
                 strokeWidth="2"
                 viewBox="0 0 24 24"
               >
-
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -207,17 +343,12 @@ export default function Dashboard() {
                   strokeLinejoin="round"
                   d="M15 12H3"
                 />
-
               </svg>
 
               Logout
-
             </button>
-
           </div>
-
         </div>
-
       </header>
 
       {/* ================================================= */}
@@ -241,15 +372,12 @@ export default function Dashboard() {
           <div className="relative z-10 flex flex-col justify-between gap-8 lg:flex-row lg:items-center">
 
             <div className="max-w-2xl">
-
               <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 backdrop-blur">
-
                 <span>✨</span>
 
                 <span className="text-xs font-semibold tracking-wide text-white/90">
                   PRODUCT MANAGEMENT
                 </span>
-
               </div>
 
               <h2 className="text-3xl font-black tracking-tight sm:text-5xl">
@@ -263,11 +391,9 @@ export default function Dashboard() {
                 track of product performance from one beautiful
                 workspace.
               </p>
-
             </div>
 
             <div className="hidden lg:block">
-
               <div className="relative flex h-40 w-40 items-center justify-center rounded-[32px] border border-white/20 bg-white/10 shadow-2xl backdrop-blur">
 
                 <div className="absolute inset-5 rounded-2xl bg-white/10" />
@@ -279,7 +405,6 @@ export default function Dashboard() {
                   strokeWidth="1.4"
                   viewBox="0 0 24 24"
                 >
-
                   <rect
                     x="3"
                     y="4"
@@ -294,15 +419,10 @@ export default function Dashboard() {
                   />
 
                   <circle cx="8" cy="8" r="1" />
-
                 </svg>
-
               </div>
-
             </div>
-
           </div>
-
         </div>
 
         {/* ================================================= */}
@@ -311,14 +431,12 @@ export default function Dashboard() {
 
         <div className="mb-9 grid grid-cols-1 gap-5 md:grid-cols-3">
 
-          {/* Products */}
+          {/* PRODUCTS */}
 
           <div className="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-white to-indigo-50 p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl">
 
             <div className="flex items-center justify-between">
-
               <div>
-
                 <p className="text-sm font-semibold text-indigo-500">
                   Total Products
                 </p>
@@ -330,27 +448,22 @@ export default function Dashboard() {
                 <p className="mt-2 text-xs text-slate-400">
                   Products displayed
                 </p>
-
               </div>
 
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-2xl text-white shadow-lg shadow-indigo-200">
                 📦
               </div>
-
             </div>
 
             <div className="absolute -bottom-10 -right-10 h-28 w-28 rounded-full bg-indigo-200/30" />
-
           </div>
 
-          {/* Inventory */}
+          {/* INVENTORY */}
 
           <div className="relative overflow-hidden rounded-2xl border border-cyan-100 bg-gradient-to-br from-white to-cyan-50 p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl">
 
             <div className="flex items-center justify-between">
-
               <div>
-
                 <p className="text-sm font-semibold text-cyan-600">
                   Total Inventory
                 </p>
@@ -362,27 +475,22 @@ export default function Dashboard() {
                 <p className="mt-2 text-xs text-slate-400">
                   Units available
                 </p>
-
               </div>
 
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 text-2xl text-white shadow-lg shadow-cyan-200">
                 📊
               </div>
-
             </div>
 
             <div className="absolute -bottom-10 -right-10 h-28 w-28 rounded-full bg-cyan-200/30" />
-
           </div>
 
-          {/* Rating */}
+          {/* RATING */}
 
           <div className="relative overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-br from-white to-amber-50 p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl">
 
             <div className="flex items-center justify-between">
-
               <div>
-
                 <p className="text-sm font-semibold text-amber-600">
                   Average Rating
                 </p>
@@ -394,19 +502,15 @@ export default function Dashboard() {
                 <p className="mt-2 text-xs text-slate-400">
                   Customer ratings
                 </p>
-
               </div>
 
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-2xl text-white shadow-lg shadow-amber-200">
                 ⭐
               </div>
-
             </div>
 
             <div className="absolute -bottom-10 -right-10 h-28 w-28 rounded-full bg-amber-200/30" />
-
           </div>
-
         </div>
 
         {/* ================================================= */}
@@ -418,13 +522,11 @@ export default function Dashboard() {
           <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
 
             <div className="flex items-center gap-4">
-
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-xl text-white shadow-lg shadow-indigo-100">
                 🛍️
               </div>
 
               <div>
-
                 <h3 className="text-xl font-black text-slate-900">
                   Product Catalog
                 </h3>
@@ -432,44 +534,99 @@ export default function Dashboard() {
                 <p className="mt-1 text-sm text-slate-500">
                   Explore and manage your products.
                 </p>
+              </div>
+            </div>
 
+            {/* SEARCH + CATEGORY */}
+
+            <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
+
+              {/* SEARCH */}
+
+              <div className="relative w-full sm:w-72 lg:w-80">
+                <svg
+                  className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <circle cx="11" cy="11" r="7" />
+
+                  <path
+                    strokeLinecap="round"
+                    d="m20 20-4-4"
+                  />
+                </svg>
+
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-12 pr-4 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+                />
               </div>
 
+              {/* CATEGORY */}
+
+              <div className="relative w-full sm:w-52">
+                <select
+                  value={selectedCategory}
+                  onChange={(event) => {
+                    setSelectedCategory(event.target.value);
+                    setPage(1);
+                  }}
+                  disabled={categoryLoading}
+                  className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 pr-10 text-sm font-medium text-slate-600 outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">
+                    {categoryLoading
+                      ? "Loading categories..."
+                      : "All Categories"}
+                  </option>
+
+                  {categories.map((category) => (
+                    <option
+                      key={category}
+                      value={category}
+                    >
+                      {category
+                        .replace(/-/g, " ")
+                        .replace(/\b\w/g, (char) =>
+                          char.toUpperCase()
+                        )}
+                    </option>
+                  ))}
+                </select>
+
+                <svg
+                  className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m6 9 6 6 6-6"
+                  />
+                </svg>
+              </div>
             </div>
-
-            {/* SEARCH */}
-
-            <div className="relative w-full lg:w-96">
-
-              <svg
-                className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-              >
-
-                <circle cx="11" cy="11" r="7" />
-
-                <path
-                  strokeLinecap="round"
-                  d="m20 20-4-4"
-                />
-
-              </svg>
-
-              <input
-                type="text"
-                placeholder="Search products..."
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-12 pr-4 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-50"
-              />
-
-            </div>
-
           </div>
 
+          {/* CATEGORY ERROR */}
+
+          {categoryError && (
+            <p className="mt-3 text-xs font-medium text-red-500">
+              {categoryError}
+            </p>
+          )}
         </div>
 
         {/* ================================================= */}
@@ -477,34 +634,25 @@ export default function Dashboard() {
         {/* ================================================= */}
 
         {loading && (
-
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 
             {[1, 2, 3, 4, 5, 6, 7, 8].map((item) => (
-
               <div
                 key={item}
                 className="overflow-hidden rounded-2xl border border-slate-200 bg-white"
               >
-
                 <div className="h-48 animate-pulse bg-gradient-to-br from-slate-100 to-indigo-50" />
 
                 <div className="space-y-3 p-4">
-
                   <div className="h-4 animate-pulse rounded bg-slate-100" />
 
                   <div className="h-3 w-2/3 animate-pulse rounded bg-slate-100" />
 
                   <div className="h-6 w-1/2 animate-pulse rounded bg-slate-100" />
-
                 </div>
-
               </div>
-
             ))}
-
           </div>
-
         )}
 
         {/* ================================================= */}
@@ -512,7 +660,6 @@ export default function Dashboard() {
         {/* ================================================= */}
 
         {error && (
-
           <div className="rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 to-rose-50 p-12 text-center">
 
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-100 text-3xl">
@@ -526,9 +673,7 @@ export default function Dashboard() {
             <p className="mt-2 text-sm text-red-500">
               {error}
             </p>
-
           </div>
-
         )}
 
         {/* ================================================= */}
@@ -536,15 +681,12 @@ export default function Dashboard() {
         {/* ================================================= */}
 
         {!loading && !error && (
-
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 
             {products.map((product) => {
-
               const stock = getStockStyle(product.stock);
 
               return (
-
                 <article
                   key={product.id}
                   className="group overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-indigo-100 hover:shadow-xl hover:shadow-indigo-100/50"
@@ -565,7 +707,6 @@ export default function Dashboard() {
                     {/* CATEGORY */}
 
                     <div className="absolute left-3.5 top-3.5">
-
                       <span
                         className={`rounded-full border px-2.5 py-1 text-[11px] font-bold capitalize shadow-sm backdrop-blur ${getCategoryStyle(
                           product.category
@@ -573,13 +714,11 @@ export default function Dashboard() {
                       >
                         {product.category}
                       </span>
-
                     </div>
 
                     {/* RATING */}
 
                     <div className="absolute right-3.5 top-3.5">
-
                       <div className="flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold text-slate-700 shadow-md">
 
                         <span className="text-amber-400">
@@ -587,11 +726,8 @@ export default function Dashboard() {
                         </span>
 
                         {product.rating}
-
                       </div>
-
                     </div>
-
                   </div>
 
                   {/* CARD BODY */}
@@ -599,7 +735,6 @@ export default function Dashboard() {
                   <div className="p-4">
 
                     <div className="min-h-[52px]">
-
                       <h4 className="line-clamp-2 text-[15px] font-bold leading-5 text-slate-900 transition group-hover:text-indigo-600">
                         {product.title}
                       </h4>
@@ -607,7 +742,6 @@ export default function Dashboard() {
                       <p className="mt-1 text-[11px] text-slate-400">
                         Product #{product.id}
                       </p>
-
                     </div>
 
                     {/* PRICE */}
@@ -615,7 +749,6 @@ export default function Dashboard() {
                     <div className="mt-4 flex items-end justify-between">
 
                       <div>
-
                         <p className="text-[11px] font-medium text-slate-400">
                           Price
                         </p>
@@ -623,21 +756,17 @@ export default function Dashboard() {
                         <p className="mt-1 text-xl font-black text-slate-950">
                           ${product.price.toFixed(2)}
                         </p>
-
                       </div>
 
                       <div
                         className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold ${stock.bg} ${stock.text}`}
                       >
-
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${stock.dot}`}
                         />
 
                         {stock.label}
-
                       </div>
-
                     </div>
 
                     <p className="mt-2 text-[11px] text-slate-400">
@@ -658,7 +787,6 @@ export default function Dashboard() {
                         }
                         className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-3 py-2 text-xs font-bold text-white shadow-md shadow-indigo-100 transition hover:from-indigo-700 hover:to-violet-700 hover:shadow-lg"
                       >
-
                         <svg
                           className="h-3.5 w-3.5"
                           fill="none"
@@ -666,7 +794,6 @@ export default function Dashboard() {
                           strokeWidth="2"
                           viewBox="0 0 24 24"
                         >
-
                           <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -678,18 +805,15 @@ export default function Dashboard() {
                             cy="12"
                             r="2.5"
                           />
-
                         </svg>
 
                         View
-
                       </button>
 
                       <button
                         className="flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-100 bg-indigo-50 text-indigo-600 transition hover:bg-indigo-100"
                         title="Edit product"
                       >
-
                         <svg
                           className="h-3.5 w-3.5"
                           fill="none"
@@ -697,7 +821,6 @@ export default function Dashboard() {
                           strokeWidth="2"
                           viewBox="0 0 24 24"
                         >
-
                           <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -709,16 +832,13 @@ export default function Dashboard() {
                             strokeLinejoin="round"
                             d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4L16.5 3.5Z"
                           />
-
                         </svg>
-
                       </button>
 
                       <button
                         className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-100 bg-rose-50 text-rose-500 transition hover:bg-rose-100"
                         title="Delete product"
                       >
-
                         <svg
                           className="h-3.5 w-3.5"
                           fill="none"
@@ -726,7 +846,6 @@ export default function Dashboard() {
                           strokeWidth="2"
                           viewBox="0 0 24 24"
                         >
-
                           <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -750,23 +869,14 @@ export default function Dashboard() {
                             strokeLinejoin="round"
                             d="M9 7V4h6v3"
                           />
-
                         </svg>
-
                       </button>
-
                     </div>
-
                   </div>
-
                 </article>
-
               );
-
             })}
-
           </div>
-
         )}
 
         {/* ================================================= */}
@@ -774,7 +884,6 @@ export default function Dashboard() {
         {/* ================================================= */}
 
         {!loading && !error && products.length === 0 && (
-
           <div className="rounded-3xl border border-slate-200 bg-white px-6 py-20 text-center shadow-sm">
 
             <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-indigo-50 text-4xl">
@@ -786,11 +895,60 @@ export default function Dashboard() {
             </h3>
 
             <p className="mt-2 text-sm text-slate-500">
-              Your product catalog is currently empty.
+              Try changing your search or category filter.
             </p>
-
           </div>
+        )}
 
+        {/* ================================================= */}
+        {/* PAGINATION */}
+        {/* ================================================= */}
+
+        {!loading && !error && products.length > 0 && (
+          <div className="mt-8 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+
+            {/* PAGE SIZE */}
+
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-slate-500">
+                Products per page
+              </span>
+
+              <select
+                value={limit}
+                onChange={handleLimitChange}
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
+
+            {/* PREVIOUS + NEXT */}
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((current) => current - 1)}
+                disabled={page === 1}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ← Previous
+              </button>
+
+              <div className="flex h-9 min-w-9 items-center justify-center rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-3 text-sm font-bold text-white shadow-md shadow-indigo-100">
+                {page}
+              </div>
+
+              <button
+                onClick={() => setPage((current) => current + 1)}
+                disabled={products.length < limit}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
         )}
 
         {/* ================================================= */}
@@ -800,23 +958,18 @@ export default function Dashboard() {
         <footer className="py-10 text-center">
 
           <div className="mb-3 flex items-center justify-center gap-2">
-
             <span className="h-2 w-2 rounded-full bg-indigo-500" />
 
             <span className="text-xs font-semibold text-slate-400">
               ProductAdmin
             </span>
-
           </div>
 
           <p className="text-xs text-slate-300">
             Product management dashboard • Powered by DummyJSON
           </p>
-
         </footer>
-
       </section>
-
     </main>
   );
 }
