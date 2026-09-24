@@ -2,8 +2,18 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addProduct} from "../../api/products";
+import { addProduct } from "../../api/products";
 import { getCategories } from "../../api/categories";
+
+type CreatedProduct = {
+  id: number;
+  title: string;
+  category: string;
+  price: number;
+  stock: number;
+  rating: number;
+  thumbnail: string;
+};
 
 export default function AddProduct() {
   const router = useRouter();
@@ -73,15 +83,54 @@ export default function AddProduct() {
       return;
     }
 
+    // Prevent duplicate submissions
+    if (loading) {
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await addProduct({
+      const createdProduct = await addProduct({
         title: title.trim(),
         price: Number(price),
         category,
         stock: Number(stock),
       });
+
+      /*
+        DummyJSON simulates POST requests and does not
+        permanently save the new product.
+
+        Therefore, we save the created product locally
+        so it can still appear in our dashboard.
+      */
+
+      const productToStore: CreatedProduct = {
+        id: createdProduct.id,
+        title: createdProduct.title ?? title.trim(),
+        category: createdProduct.category ?? category,
+        price: createdProduct.price ?? Number(price),
+        stock: createdProduct.stock ?? Number(stock),
+        rating: createdProduct.rating ?? 0,
+        thumbnail: createdProduct.thumbnail ?? "",
+      };
+
+      const existingProducts = JSON.parse(
+        localStorage.getItem("addedProducts") || "[]"
+      ) as CreatedProduct[];
+
+      const updatedProducts = [
+        ...existingProducts.filter(
+          (product) => product.id !== productToStore.id
+        ),
+        productToStore,
+      ];
+
+      localStorage.setItem(
+        "addedProducts",
+        JSON.stringify(updatedProducts)
+      );
 
       router.push("/dashboard");
     } catch (error) {
@@ -311,13 +360,13 @@ export default function AddProduct() {
                     <svg
                       className="h-5 w-5"
                       fill="none"
-                      stroke="currentColor"
                       viewBox="0 0 24 24"
                     >
                       <path
+                        stroke="currentColor"
+                        strokeWidth={2}
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth={2}
                         d="M12 4v16m8-8H4"
                       />
                     </svg>
