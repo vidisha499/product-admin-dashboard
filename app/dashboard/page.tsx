@@ -102,14 +102,14 @@ const saveDeletedProductIds = (ids: number[]) => {
 // =================================================
 
 const getInitialPage = (value: string | null) => {
-    if (!value) {
+    if (!value || !/^\d+$/.test(value)) {
         return 1;
     }
 
     const parsedPage = Number(value);
 
     if (
-        Number.isInteger(parsedPage) &&
+        Number.isSafeInteger(parsedPage) &&
         parsedPage >= 1
     ) {
         return parsedPage;
